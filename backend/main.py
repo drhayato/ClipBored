@@ -18,11 +18,13 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Temporarily allow all for local development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,80 +60,71 @@ async def health_check() -> Dict[str, str]:
 # --- INGESTION PIPELINE ---
 
 @app.post("/api/ingest/upload")
-async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def upload_documents(files: List[UploadFile] = File(...)) -> Dict[str, Any]:
     """
-    Streaming ingestion pipeline:
-    1. Validate Extension
+    Streaming ingestion pipeline for multiple files:
+    1. Validate Extensions
     2. Stream to Temp Disk (RAM Protection)
     3. Convert to Markdown (MarkItDown)
     4. Semantic Chunking (LangChain)
-    5. Structural JSON Return
+    5. Aggregate results and return
     """
-    filename = file.filename or "unknown_source"
-    file_ext = os.path.splitext(filename)[1].lower()
+    total_chunks = 0
+    all_logs = []
+    processed_files = []
 
-    # Phase 1: Extension Validation
-    if file_ext not in ALLOWED_EXTENSIONS:
+    for file in files:
+        filename = file.filename or "unknown_source"
+        file_ext = os.path.splitext(filename)[1].lower()
+
+        # Phase 1: Extension Validation
+        if file_ext not in ALLOWED_EXTENSIONS:
+            all_logs.append(f"SKIP: '{filename}' - Unsupported format")
+            continue
+
+        # Phase 2: Disk-Bound Streaming (Memory Guard)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
+        temp_file.close()  # Close the handle immediately to avoid Windows PermissionError
+        try:
+            with open(temp_file.name, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            # Phase 3: MarkItDown Conversion
+            try:
+                conversion_result = md_converter.convert(temp_file.name)
+                raw_markdown = conversion_result.text_content
+            except Exception as e:
+                all_logs.append(f"ERROR: '{filename}' - Conversion failed: {str(e)}")
+                continue
+
+            # Phase 4: LangChain Semantic Chunking
+            structural_chunks = markdown_splitter.split_text(raw_markdown)
+            file_chunk_count = len(structural_chunks)
+            total_chunks += file_chunk_count
+            
+            all_logs.append(f"SUCCESS: '{filename}' - {file_chunk_count} chunks")
+            processed_files.append(filename)
+
+        except Exception as e:
+            all_logs.append(f"ERROR: '{filename}' - Pipeline failure: {str(e)}")
+        finally:
+            if os.path.exists(temp_file.name):
+                os.unlink(temp_file.name)
+
+    if not processed_files and files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file format '{file_ext}'. Accepted: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Failed to process any files. Logs: {'; '.join(all_logs)}"
         )
 
-    # Phase 2: Disk-Bound Streaming (Memory Guard)
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
-    try:
-        with open(temp_file.name, "wb") as buffer:
-            # Stream directly from incoming binary object to disk
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Phase 3: MarkItDown Conversion
-        # Convert local disk artifact to structured Markdown
-        try:
-            conversion_result = md_converter.convert(temp_file.name)
-            raw_markdown = conversion_result.text_content
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Conversion error: {str(e)}"
-            )
-
-        # Phase 4: LangChain Semantic Chunking
-        # Segment by Markdown headers to preserve contextual hierarchy
-        structural_chunks = markdown_splitter.split_text(raw_markdown)
-
-        # Phase 5: Result Packaging
-        processed_chunks = []
-        for idx, chunk in enumerate(structural_chunks):
-            processed_chunks.append({
-                "index": idx,
-                "content": chunk.page_content,
-                "metadata": chunk.metadata
-            })
-
-        return {
-            "status": "SUCCESS",
-            "filename": filename,
-            "chunk_count": len(processed_chunks),
-            "chunk_indices": [c["index"] for c in processed_chunks],
-            "chunks": processed_chunks
-        }
-
-    except Exception as e:
-        # Catch-all for pipeline failures
-        if not isinstance(e, HTTPException):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ingestion pipeline failure: {str(e)}"
-            )
-        raise e
-
-    finally:
-        # Phase 6: Mandatory Disk Purge
-        # Ensure temporary file artifacts are erased regardless of success
-        if os.path.exists(temp_file.name):
-            os.unlink(temp_file.name)
+    return {
+        "status": "SUCCESS",
+        "message": f"Successfully processed {len(processed_files)}/{len(files)} files",
+        "chunks": total_chunks,
+        "logs": all_logs
+    }
             
 # --- ENGINE ENTRY POINT ---
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
