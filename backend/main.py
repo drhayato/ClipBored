@@ -2,29 +2,56 @@ import os
 import shutil
 import tempfile
 from typing import List, Dict, Any
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from markitdown import MarkItDown
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 
-# --- CLIPBORED ENGINE CONFIGURATION ---
+# --- FORCE EXPLICIT PATH MAPPING FOR ENVIRONMENT VALUES ---
+from dotenv import load_dotenv
+
+# Find the exact path of the directory main.py lives in
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Map the path explicitly to the .env file in the same directory
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+# Force load the .env file explicitly using its absolute path coordinates
+load_dotenv(dotenv_path=ENV_PATH)
+# -----------------------------------------------------------
+
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+
+# -- Directory Configuration ---
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
+
+# Make sure folders exist to prevent crash
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(CHROMA_DIR, exist_ok=True)
+
+# === FIXED: Initialize app exactly ONCE with all settings ===
 app = FastAPI(
     title="ClipBored Engine",
     description="Intelligent AI Study Assistant - Ingestion & Processing Pipeline",
     version="1.0.0"
 )
 
-# Explicitly whitelist Next.js frontend
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-]
+# Initialize OpenAI Embeddings
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small", dimensions=1024)
 
+# Create a local Chroma vector store instance
+vector_store = Chroma(
+    persist_directory=CHROMA_DIR,
+    embedding_function=embeddings,
+    collection_name="clipbored_Documents"
+)
+
+# Configure CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Temporarily allow all for local development
+    allow_origins=["*"],  # Temporarily allow all for local development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,6 +112,7 @@ async def upload_documents(files: List[UploadFile] = File(...)) -> Dict[str, Any
         # Phase 2: Disk-Bound Streaming (Memory Guard)
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
         temp_file.close()  # Close the handle immediately to avoid Windows PermissionError
+
         try:
             with open(temp_file.name, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -101,8 +129,23 @@ async def upload_documents(files: List[UploadFile] = File(...)) -> Dict[str, Any
             structural_chunks = markdown_splitter.split_text(raw_markdown)
             file_chunk_count = len(structural_chunks)
             total_chunks += file_chunk_count
+
+            # === PHASE 5: THE VECTOR VAULT INJECTION ===
+            from langchain_core.documents import Document
+
+            documents_to_store = [
+                Document(
+                    page_content=chunk.page_content,
+                    metadata={**chunk.metadata, "source": filename}
+                )
+                for chunk in structural_chunks
+            ]
             
-            all_logs.append(f"SUCCESS: '{filename}' - {file_chunk_count} chunks")
+            # Commit documents to the local Chroma instance
+            if documents_to_store:
+                vector_store.add_documents(documents_to_store)
+
+            all_logs.append(f"SUCCESS: '{filename}' - {file_chunk_count} chunks stored in Vector Vault")
             processed_files.append(filename)
 
         except Exception as e:
@@ -120,10 +163,10 @@ async def upload_documents(files: List[UploadFile] = File(...)) -> Dict[str, Any
     return {
         "status": "SUCCESS",
         "message": f"Successfully processed {len(processed_files)}/{len(files)} files",
-        "chunks": total_chunks,
+        "chunks": int(total_chunks),
         "logs": all_logs
     }
-            
+
 # --- ENGINE ENTRY POINT ---
 if __name__ == "__main__":
     import uvicorn

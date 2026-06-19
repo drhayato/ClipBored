@@ -2,57 +2,30 @@ import FileUploader from "../components/FileUploader";
 
 export default function Home() {
   return (
-    <main className="bg-black text-white min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4">
-      {/* BACKGROUND ANIMATION PANELS (MESH GRADIENTS) */}
-      <div className="absolute inset-0 pointer-events-none select-none">
-        {/* Top-Left: Indigo to Purple */}
-        <div 
-          className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-gradient-to-br from-indigo-600 to-purple-800 opacity-40 mix-blend-screen blur-[130px] animate-pulse" 
-          style={{ animationDuration: '8s' }}
-        ></div>
-        
-        {/* Bottom-Right: Pink to Rose */}
-        <div 
-          className="absolute bottom-[-15%] right-[-5%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-pink-600 to-rose-900 opacity-40 mix-blend-screen blur-[130px] animate-pulse" 
-          style={{ animationDuration: '11s' }}
-        ></div>
-        
-        {/* Center-Right: Cyan to Emerald Accent */}
-        <div 
-          className="absolute top-[30%] right-[-10%] w-[40%] h-[40%] rounded-full bg-gradient-to-l from-cyan-500 to-emerald-600 opacity-30 mix-blend-screen blur-[130px] animate-pulse" 
-          style={{ animationDuration: '6s' }}
-        ></div>
-      </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-black text-white selection:bg-white selection:text-black">
+      <div className="flex flex-col items-center space-y-8 w-full max-w-4xl px-4">
+        {/* Status Pill */}
+        <div className="flex items-center space-x-2 rounded-full border border-zinc-800 bg-black px-3 py-1 text-xs font-medium text-zinc-400">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          </span>
+          <span>Frontend Engine Active</span>
+        </div>
 
-      {/* CONTENT LAYER */}
-      <div className="relative z-10 w-full max-w-6xl flex flex-col items-center">
-        <header className="text-center mb-12 space-y-4">
-          <h1 className="text-5xl sm:text-7xl md:text-8xl font-extrabold tracking-tighter bg-gradient-to-b from-white via-zinc-200 to-zinc-600 bg-clip-text text-transparent select-none">
+        {/* Title */}
+        <div className="text-center space-y-2">
+          <h1 className="text-5xl font-extrabold tracking-tighter sm:text-7xl bg-gradient-to-b from-white to-zinc-500 bg-clip-text text-transparent">
             ClipBored
           </h1>
-          <div className="flex items-center justify-center space-x-3">
-            <div className="h-[1px] w-8 bg-zinc-800"></div>
-            <p className="font-mono text-xs sm:text-sm uppercase tracking-[0.3em] text-zinc-400">
-              Workspace Ingestion Dashboard
-            </p>
-            <div className="h-[1px] w-8 bg-zinc-800"></div>
-          </div>
-        </header>
+          <p className="text-zinc-500 font-mono text-sm tracking-tight">AI Study Assistant // Ingest Module</p>
+        </div>
 
-        {/* INGESTION VAULT MOUNT POINT */}
-        <div className="w-full flex justify-center">
+        {/* Uploader Section */}
+        <div className="w-full">
           <FileUploader />
         </div>
-        
-        <footer className="mt-16 opacity-20 hover:opacity-50 transition-opacity duration-700">
-          <p className="font-mono text-[10px] tracking-widest uppercase">
-            Encrypted Session // Protocol v4.0.9
-          </p>
-        </footer>
       </div>
-
-      {/* NOISE OVERLAY FOR TEXTURE */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay"></div>
     </main>
   );
 }

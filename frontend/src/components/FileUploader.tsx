@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
+import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
 
 interface UploadResponse {
   chunks?: number;
@@ -14,21 +14,7 @@ export default function FileUploader() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<UploadResponse | null>(null);
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check backend health on mount
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/api/health');
-        setBackendOnline(res.ok);
-      } catch (e) {
-        setBackendOnline(false);
-      }
-    };
-    checkHealth();
-  }, []);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -49,8 +35,9 @@ export default function FileUploader() {
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFiles(prev => [...prev, ...Array.from(e.target.files)]);
+    const selectedFiles = e.target.files;
+    if (selectedFiles && selectedFiles.length > 0) {
+      setFiles(prev => [...prev, ...Array.from(selectedFiles)]);
     }
   };
 
@@ -70,58 +57,51 @@ export default function FileUploader() {
     });
 
     try {
-      // Using localhost instead of 127.0.0.1 for better Windows compatibility
-      const response = await fetch('http://localhost:8000/api/ingest/upload', {
+      const response = await fetch('http://127.0.0.1:8000/api/ingest/upload', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         let errorMessage = response.statusText;
+
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorData.message || errorMessage;
-        } catch (e) {
-          // Fallback to statusText if JSON parsing fails
+          const detail = errorData.detail ?? errorData.message;
+          errorMessage = typeof detail === 'string'
+            ? detail
+            : JSON.stringify(detail);
+        } catch {
+          // Keep the HTTP status text when the backend does not return JSON.
         }
+
         throw new Error(`Upload failed: ${errorMessage}`);
       }
 
       const data: UploadResponse = await response.json();
       setStatus(data);
       setFiles([]); // Clear files on success
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Upload Error:', error);
-      setStatus({ error: error.message || 'An unexpected error occurred' });
+      setStatus({
+        error: error instanceof Error ? error.message : 'An unexpected error occurred'
+      });
     } finally {
       setIsUploading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6">
+    <div className="flex items-center justify-center min-h-screen p-6">
       <div className="w-full max-w-2xl bg-zinc-900/80 backdrop-blur-md border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden">
         <div className="p-8">
-          <header className="mb-8 flex justify-between items-start">
-            <div>
-              <h1 className="text-3xl font-light tracking-tight text-zinc-100 mb-2">
-                Document Ingestion Vault
-              </h1>
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                SYS_INIT: layout_parsing_active // v2.0.5
-              </p>
-            </div>
-            <div className="flex flex-col items-end">
-              <div className="flex items-center space-x-2">
-                <span className={`h-1.5 w-1.5 rounded-full ${backendOnline === true ? 'bg-emerald-500 animate-pulse' : backendOnline === false ? 'bg-red-500' : 'bg-zinc-600'}`}></span>
-                <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-tighter">
-                  Backend: {backendOnline === true ? 'Online' : backendOnline === false ? 'Offline' : 'Checking...'}
-                </span>
-              </div>
-              {backendOnline === false && (
-                <span className="text-[8px] text-red-400/60 font-mono mt-1 uppercase">Run: python main.py</span>
-              )}
-            </div>
+          <header className="mb-8">
+            <h1 className="text-3xl font-light tracking-tight text-zinc-100 mb-2">
+              Document Ingestion Vault
+            </h1>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+              SYS_INIT: layout_parsing_active // metadata_sync_v2.0.4
+            </p>
           </header>
 
           <div
@@ -181,10 +161,10 @@ export default function FileUploader() {
           <div className="mt-8">
             <button
               onClick={uploadFiles}
-              disabled={files.length === 0 || isUploading || backendOnline === false}
+              disabled={files.length === 0 || isUploading}
               className={`
                 w-full py-4 rounded-full font-bold text-white tracking-wide transition-all duration-300
-                ${files.length > 0 && !isUploading && backendOnline !== false
+                ${files.length > 0 && !isUploading
                   ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:shadow-[0_0_25px_rgba(168,85,247,0.4)] active:scale-[0.98]'
                   : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}
               `}
@@ -197,7 +177,7 @@ export default function FileUploader() {
                   </svg>
                   <span>Infiltrating Backend...</span>
                 </span>
-              ) : backendOnline === false ? "Backend Offline" : "Upload Files"}
+              ) : "Upload Files"}
             </button>
           </div>
 
@@ -210,14 +190,7 @@ export default function FileUploader() {
                 </div>
                 <div className="font-mono text-xs space-y-1 text-zinc-400">
                   {isUploading && <p className="text-indigo-400"> {'>'} Establishing secure link...</p>}
-                  {status?.error && (
-                    <div className="space-y-1">
-                      <p className="text-red-400"> {'>'} ERROR: {status.error}</p>
-                      {status.error.includes('fetch') && (
-                        <p className="text-[10px] text-zinc-500 italic ml-4">Tip: Ensure the FastAPI server is running on port 8000 and check for CORS block in browser console.</p>
-                      )}
-                    </div>
-                  )}
+                  {status?.error && <p className="text-red-400"> {'>'} ERROR: {status.error}</p>}
                   {status?.message && <p className="text-emerald-400"> {'>'} SUCCESS: {status.message}</p>}
                   {status?.chunks !== undefined && <p className="text-zinc-300"> {'>'} TOTAL_CHUNKS: {status.chunks}</p>}
                   {status?.logs?.map((log, i) => (
