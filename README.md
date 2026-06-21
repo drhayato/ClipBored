@@ -5,7 +5,7 @@
 **Official Repository:** [https://github.com/drhayato/ClipBored.git](https://github.com/drhayato/ClipBored.git) *(Closed Source / Production Tracking)*
 ---
 
-## 🚀 Overview
+## About
 
 ClipBored is a premium, proprietary web application that ingests your complex study materials and instantly generates context-aware study tools. Built on a scalable, decoupled architecture, it leverages advanced Retrieval-Augmented Generation (RAG) to provide a seamless, interactive learning experience directly in your browser.
 
@@ -26,7 +26,7 @@ The application is built on a decoupled architecture, separating the web interfa
 - **Intelligence:** Integration with external Large Language Models (LLMs) to handle text processing, reasoning, and data structuring.
 
 
-*## 🌍 Status & Launch
+## 🌍 Status & Launch
 
 ClipBored is currently in active development for its official public web release. The application is a closed-source commercial project and is not intended for local open-source distribution.
 
